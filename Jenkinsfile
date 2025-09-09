@@ -1,39 +1,44 @@
 pipeline {
-    agent { 
-        node {
-            label 'docker-agent-nodejs'
-            }
-      }
-    triggers {
-        pollSCM '* * * * *'
-    }
-    stages {
-        stage('Build') {
-            steps {
-                echo "Building.."
-                sh '''
-                cd myapp
-                npm i
-                node server.js
+    agent any
 
-                '''
+    stages {
+        stage('Checkout') {
+            steps {
+                git 'https://github.com/pardparw/ticket-app.git'
             }
         }
-        stage('Test') {
+
+        stage('Build Backend') {
             steps {
-                echo "Testing.."
-                sh '''
-                npm i
-                node server.js
-                '''
+                script {
+                    docker.build("your-dockerhub-user/backend:latest", "./backend")
+                }
             }
         }
-        stage('Deliver') {
+
+        stage('Build Frontend') {
             steps {
-                echo 'Deliver....'
-                sh '''
-                echo "doing delivery stuff.."
-                '''
+                script {
+                    docker.build("your-dockerhub-user/frontend:latest", "./frontend")
+                }
+            }
+        }
+
+        stage('Push Images') {
+            steps {
+                withCredentials([usernamePassword(credentialsId: 'dockerhub-cred', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                    sh """
+                        echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin
+                        docker push your-dockerhub-user/backend:latest
+                        docker push your-dockerhub-user/frontend:latest
+                    """
+                }
+            }
+        }
+
+        stage('Deploy to Kubernetes') {
+            steps {
+                sh 'kubectl apply -f k8s-deployment.yaml'
             }
         }
     }
